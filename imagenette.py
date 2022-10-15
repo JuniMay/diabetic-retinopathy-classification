@@ -8,21 +8,19 @@ from model import Net
 
 from utils import run, onehot_fn, load_data
 
-
 def main():
-    train_data_dir = 'data/DDR/train/'
-    test_data_dir = 'data/DDR/test'
-    valid_data_dir = 'data/DDR/valid'
+    train_data_dir = 'data/imagenette2-320/train/'
+    test_data_dir = 'data/imagenette2-320/val'
 
     batch_size = 128
     num_epochs = 50
-    base_dir = 'log'
-    learning_rate = 0.002
+    base_dir = 'tf-logs'
+    learning_rate = 0.001
     label_smoothing = 0.3
-    gamma = 0.95
+    gamma = 0.9
 
-    dim = 128
-    depth = 12
+    dim = 256
+    depth = 8
     kernel_size = 9
     patch_size = 8
     drop = 0.2
@@ -30,7 +28,7 @@ def main():
     timestamp = '{0:%Y-%m-%dT%H-%M-%S}'.format(datetime.now())
 
     data_transforms = transforms.Compose([
-        transforms.Resize(512),
+        transforms.Resize((320, 320)),
         transforms.RandomVerticalFlip(),
         transforms.RandomHorizontalFlip(),
         transforms.RandomRotation((-45, 45)),
@@ -38,23 +36,20 @@ def main():
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                              std=[0.229, 0.224, 0.225])
     ])
-
-    train_data_loader = load_data(train_data_dir, data_transforms,
-                                  onehot_fn(5), batch_size, True)
-    test_data_loader = load_data(test_data_dir, data_transforms, onehot_fn(5),
+    train_data_loader = load_data(train_data_dir, data_transforms, onehot_fn(10),
+                                  batch_size, True)
+    test_data_loader = load_data(test_data_dir, data_transforms, onehot_fn(10),
                                  batch_size, True)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    model = Net(
-        dim=dim,
-        depth=depth,
-        kernel_size=kernel_size,
-        patch_size=patch_size,
-        num_classes=5,
-        in_channels=3,
-        drop=drop,
-    ).to(device)
+    model = Net(dim=dim,
+                depth=depth,
+                kernel_size=kernel_size,
+                patch_size=patch_size,
+                num_classes=10,
+                in_channels=3,
+                drop=drop,).to(device)
     print(model)
 
     criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing).to(device)
@@ -81,7 +76,7 @@ def main():
         'drop': drop
     }
 
-    run('Net',
+    run('Imagenette',
         model=model,
         criterion=criterion,
         optimizer=optimizer,

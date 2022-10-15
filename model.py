@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 
-
 class PatchEmbedding(nn.Module):
     def __init__(self, dim, patch_size, in_channels=3):
         super().__init__()
@@ -10,7 +9,7 @@ class PatchEmbedding(nn.Module):
         self.activation = nn.GELU()
         self.norm = nn.BatchNorm2d(dim)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv(x)
         x = self.activation(x)
         x = self.norm(x)
@@ -32,7 +31,7 @@ class BasicLayer(nn.Module):
         self.activation2 = nn.GELU()
         self.norm2 = nn.BatchNorm2d(dim)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         residual = x
 
         x = self.depthwise_conv(x)
@@ -49,25 +48,25 @@ class BasicLayer(nn.Module):
 
 
 class ClassificationHead(nn.Module):
-    def __init__(self, dim, num_classes, dropout_rate=0.25):
+    def __init__(self,
+                 dim,
+                 num_hiddens = None,
+                 num_classes=5,
+                 drop=0.25,):
         super().__init__()
 
-        self.pooling = nn.AdaptiveAvgPool2d((1, 1))
-        self.flatten = nn.Flatten()
+        if num_hiddens is None:
+            num_hiddens = dim * 2
 
-        num_hidden = dim * 2
-
-        self.linear1 = nn.Linear(dim, num_hidden)
+        self.linear1 = nn.Linear(dim, num_hiddens)
         self.activation1 = nn.GELU()
-        self.dropout1 = nn.Dropout(dropout_rate)
-        self.linear2 = nn.Linear(num_hidden, num_hidden)
+        self.dropout1 = nn.Dropout(drop)
+        self.linear2 = nn.Linear(num_hiddens, num_hiddens)
         self.activation2 = nn.GELU()
-        self.dropout2 = nn.Dropout(dropout_rate)
-        self.linear3 = nn.Linear(num_hidden, num_classes)
+        self.dropout2 = nn.Dropout(drop)
+        self.linear3 = nn.Linear(num_hiddens, num_classes)
 
-    def forward(self, x):
-        x = self.pooling(x)
-        x = self.flatten(x)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.linear1(x)
         x = self.activation1(x)
         x = self.dropout1(x)
@@ -86,7 +85,7 @@ class Net(nn.Module):
                  patch_size,
                  num_classes=5,
                  in_channels=3,
-                 dropout_rate=0.25):
+                 drop=0.25):
         super().__init__()
 
         self.patch = PatchEmbedding(dim, patch_size, in_channels)
@@ -94,14 +93,20 @@ class Net(nn.Module):
         for _ in range(depth):
             self.layers.append(BasicLayer(dim, kernel_size))
 
-        self.head = ClassificationHead(dim, num_classes, dropout_rate)
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.flatten = nn.Flatten()
+        
+        self.head = ClassificationHead(dim, None, num_classes, drop)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
 
         x = self.patch(x)
 
         for layer in self.layers:
             x = layer(x)
 
+        x = self.pool(x)
+        x = self.flatten(x)
         x = self.head(x)
+
         return x
