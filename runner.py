@@ -49,6 +49,12 @@ class Runner:
 
         self.log_dir = self.metadata['log_dir'] + '/' + self.timestamp
 
+        if self.mode == 'valid':
+            if self.metadata['timestamp'] is None:
+                raise RuntimeError('timestamp must be indicated for valid mode')
+            curr_timestamp = '{0:%Y-%m-%dT%H-%M-%S}'.format(datetime.now())
+            self.log_dir = f'{self.log_dir}-valid-{curr_timestamp}'
+
         self.writer = SummaryWriter(self.log_dir)
 
         with open(f'{self.log_dir}/metadata.json', 'w') as f:
@@ -84,8 +90,14 @@ class Runner:
                 self.train_classification_epoch(epoch)
                 self.valid_classification_epoch(epoch)
                 self.save_checkpoint(epoch)
-        else:
-            pass
+
+        elif self.mode == 'valid':
+            self.load_checkpoint(self.metadata['log_dir'] + '/' +
+                                 self.metadata['timestamp'])
+            acc, loss = self.valid_classification_epoch(0)
+            for i in range(self.num_epochs):
+                self.writer.add_scalar('Accuracy/valid', acc, i)
+                self.writer.add_scalar('Loss/valid', loss, i)
 
     def load_data(self) -> None:
         self.train_data_loader = load_data(
@@ -166,8 +178,11 @@ class Runner:
 
                     progress.advance(task)
 
-                self.writer.add_scalar(f'Accuracy/valid', accuracy, epoch)
-                self.writer.add_scalar(f'Loss/valid', loss.item(), epoch)
+                if self.mode == 'train':
+                    self.writer.add_scalar(f'Accuracy/valid', accuracy, epoch)
+                    self.writer.add_scalar(f'Loss/valid', loss.item(), epoch)
+
+        return accuracy, loss.item()
 
     def save_checkpoint(self, epoch):
         checkpoint = {
@@ -179,16 +194,16 @@ class Runner:
         checkpoint_path = f'{self.log_dir}/{epoch}.pt'
         torch.save(checkpoint, checkpoint_path)
 
-    def load_checkpoint(self):
+    def load_checkpoint(self, directory):
         max_epoch = -1
-        for file in os.listdir(self.log_dir):
+        for file in os.listdir(directory):
             if file.endswith('.pt'):
                 max_epoch = max(max_epoch, int(file.rsplit('.', 1)[0]))
 
         if max_epoch == -1:
             raise RuntimeError('cannot find saved checkpoint')
 
-        checkpoint = torch.load(f'{self.log_dir}/{max_epoch}.pt')
+        checkpoint = torch.load(f'{directory}/{max_epoch}.pt')
         self.net.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
