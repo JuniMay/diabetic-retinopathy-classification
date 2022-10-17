@@ -23,20 +23,10 @@ class Config:
                                  default=20,
                                  type=int,
                                  help='number of epochs')
-        self.parser.add_argument(
-            '--num-local-epochs',
-            default=5,
-            type=int,
-            help='number of epochs in each local iteration(for clustering)')
         self.parser.add_argument('--batch-size',
                                  default=1024,
                                  type=int,
                                  help='batch size')
-        self.parser.add_argument(
-            '--local-batch-size',
-            default=128,
-            type=int,
-            help='batch size of local iterations(for clustering)')
         self.parser.add_argument('--dataset-dir',
                                  default='./data/DDR',
                                  type=str,
@@ -57,11 +47,6 @@ class Config:
         self.parser.add_argument('--no-cuda',
                                  action='store_true',
                                  help='do not use cuda')
-        self.parser.add_argument(
-            '--method',
-            default='classification',
-            type=str,
-            help='mathod used for training and validating')
 
         self.parser.add_argument('--lr',
                                  default=0.001,
@@ -100,13 +85,10 @@ class Config:
                                  type=float,
                                  help='dropout rate of the model')
 
-        self.config = dict()
-        self.args = None
-
     def configurate(self):
-        self.args = self.parser.parse_args()
-        self.config = vars(self.args)
-        return self.config
+        args = self.parser.parse_args()
+        config = vars(args)
+        return config
 
 
 if __name__ == '__main__':

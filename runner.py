@@ -80,13 +80,10 @@ class Runner:
     def run(self) -> None:
         self.load_data()
         if self.mode == 'train':
-            if self.metadata['method'] == 'classification':
-                for epoch in range(self.num_epochs):
-                    self.train_classification_epoch(epoch)
-                    self.valid_classification_epoch(epoch)
-                    self.save_checkpoint(epoch)
-            else:
-                pass
+            for epoch in range(self.num_epochs):
+                self.train_classification_epoch(epoch)
+                self.valid_classification_epoch(epoch)
+                self.save_checkpoint(epoch)
         else:
             pass
 

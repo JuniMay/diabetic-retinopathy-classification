@@ -1,11 +1,12 @@
 from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
 
+
 def load_data(data_dir,
               transform,
               target_transform,
               batch_size=64,
-              num_workers = 5,
+              num_workers=5,
               shuffle=True):
     data = ImageFolder(root=data_dir,
                        transform=transform,
