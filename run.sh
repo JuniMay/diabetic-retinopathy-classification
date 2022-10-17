@@ -1,0 +1,12 @@
+python main.py --num-classes 5 --num-workers 12 --num-epochs 60 --batch-size 32 --valid-data-dir 'data/DDR/test' --log-dir 'tf-logs' --lr 2e-5 --input-size 480 --kernel-size 1 --backbone convnext_base
+python main.py --num-classes 5 --num-workers 12 --num-epochs 60 --batch-size 32 --valid-data-dir 'data/DDR/test' --log-dir 'tf-logs' --lr 2e-5 --input-size 384 --kernel-size 1 --backbone convnext_base
+python main.py --num-classes 5 --num-workers 12 --num-epochs 60 --batch-size 32 --valid-data-dir 'data/DDR/test' --log-dir 'tf-logs' --lr 2e-5 --input-size 224 --kernel-size 1 --backbone convnext_base
+python main.py --num-classes 5 --num-workers 12 --num-epochs 60 --batch-size 32 --valid-data-dir 'data/DDR/test' --log-dir 'tf-logs' --lr 2e-5 --input-size 480 --kernel-size 1 --backbone efficientnet
+python main.py --num-classes 5 --num-workers 12 --num-epochs 60 --batch-size 32 --valid-data-dir 'data/DDR/test' --log-dir 'tf-logs' --lr 2e-5 --input-size 384 --kernel-size 1 --backbone efficientnet
+python main.py --num-classes 5 --num-workers 12 --num-epochs 60 --batch-size 32 --valid-data-dir 'data/DDR/test' --log-dir 'tf-logs' --lr 2e-5 --input-size 224 --kernel-size 1 --backbone efficientnet
+python main.py --num-classes 5 --num-workers 12 --num-epochs 60 --batch-size 32 --valid-data-dir 'data/DDR/test' --log-dir 'tf-logs' --lr 2e-5 --input-size 480 --kernel-size 1 --backbone densenet121
+python main.py --num-classes 5 --num-workers 12 --num-epochs 60 --batch-size 32 --valid-data-dir 'data/DDR/test' --log-dir 'tf-logs' --lr 2e-5 --input-size 384 --kernel-size 1 --backbone densenet121
+python main.py --num-classes 5 --num-workers 12 --num-epochs 60 --batch-size 32 --valid-data-dir 'data/DDR/test' --log-dir 'tf-logs' --lr 2e-5 --input-size 224 --kernel-size 1 --backbone densenet121
+python main.py --num-classes 5 --num-workers 12 --num-epochs 60 --batch-size 32 --valid-data-dir 'data/DDR/test' --log-dir 'tf-logs' --lr 2e-5 --input-size 480 --kernel-size 1 --backbone densenet161
+python main.py --num-classes 5 --num-workers 12 --num-epochs 60 --batch-size 32 --valid-data-dir 'data/DDR/test' --log-dir 'tf-logs' --lr 2e-5 --input-size 384 --kernel-size 1 --backbone densenet161
+python main.py --num-classes 5 --num-workers 12 --num-epochs 60 --batch-size 32 --valid-data-dir 'data/DDR/test' --log-dir 'tf-logs' --lr 2e-5 --input-size 224 --kernel-size 1 --backbone densenet161

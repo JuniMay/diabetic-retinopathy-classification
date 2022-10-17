@@ -1,10 +1,11 @@
 import os
 import json
 import torch
+import torchvision
 import torch.nn as nn
 import torch.optim as optim
 from config import Config
-from model import Net
+from model import Net, PatchEmbedding
 from utils import load_data
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
@@ -26,21 +27,50 @@ class Runner:
         self.num_classes = self.metadata['num_classes']
         self.num_workers = self.metadata['num_workers']
         self.num_epochs = self.metadata['num_epochs']
+        self.dim = self.metadata['dim']
 
-        self.net = Net(dim=self.metadata['dim'],
-                       depth=self.metadata['depth'],
-                       kernel_size=self.metadata['kernel_size'],
-                       patch_size=self.metadata['patch_size'],
-                       num_classes=self.num_classes,
-                       in_channels=3,
-                       drop=self.metadata['drop']).to(self.device)
+        self.backbone = PatchEmbedding(self.dim, self.metadata['patch_size'],
+                                       3)
+        if self.metadata['backbone'] == 'densenet121':
+            net = torchvision.models.densenet121(pretrained=True)
+            self.backbone = nn.Sequential(*(list(net.children())[:-1]))  # 1024
+            self.dim = 1024
+        elif self.metadata['backbone'] == 'densenet161':
+            net = torchvision.models.densenet161(pretrained=True)
+            self.backbone = nn.Sequential(*(list(net.children())[:-1]))  # 2208
+            self.dim = 2208
+        elif self.metadata['backbone'] == 'efficientnet':
+            net = torchvision.models.efficientnet_b4(pretrained=True)
+            self.backbone = nn.Sequential(*(list(net.children())[:-2]))  # 1792
+            self.dim = 1792
+        elif self.metadata['backbone'] == 'resnet101':
+            net = torchvision.models.resnet101(pretrained=True)
+            self.backbone = nn.Sequential(*(list(net.children())[:-2]))  # 2048
+            self.dim = 2048
+        elif self.metadata['backbone'] == 'resnet152':
+            net = torchvision.models.resnet152(pretrained=True)
+            self.backbone = nn.Sequential(*(list(net.children())[:-2]))  # 2048
+            self.dim = 2048
+        elif self.metadata['backbone'] == 'convnext_base':
+            net = torchvision.models.convnext_base(pretrained=True)
+            self.backbone = nn.Sequential(*(list(net.children())[:-2]))  # 1024
+            self.dim = 1024
 
-        self.optimizer = optim.Adam(self.net.parameters(),
-                                    lr=self.metadata['lr'])
+        self.model = nn.Sequential(
+            self.backbone,
+            Net(dim=self.dim,
+                depth=self.metadata['depth'],
+                kernel_size=self.metadata['kernel_size'],
+                num_classes=self.num_classes,
+                drop=self.metadata['drop'])).to(self.device)
+
+        self.optimizer = optim.AdamW(list(self.model.parameters()) +
+                                     list(self.backbone.parameters()),
+                                     lr=self.metadata['lr'])
         self.criterion = nn.CrossEntropyLoss(
             label_smoothing=self.metadata['label_smoothing']).to(self.device)
-        self.scheduler = optim.lr_scheduler.ExponentialLR(
-            self.optimizer, gamma=self.metadata['gamma'])
+        self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            self.optimizer, T_max=self.num_epochs // 4, eta_min=1e-10)
 
         if self.metadata['timestamp'] is None:
             self.timestamp = '{0:%Y-%m-%dT%H-%M-%S}'.format(datetime.now())
@@ -51,7 +81,8 @@ class Runner:
 
         if self.mode == 'valid':
             if self.metadata['timestamp'] is None:
-                raise RuntimeError('timestamp must be indicated for valid mode')
+                raise RuntimeError(
+                    'timestamp must be indicated for valid mode')
             curr_timestamp = '{0:%Y-%m-%dT%H-%M-%S}'.format(datetime.now())
             self.log_dir = f'{self.log_dir}-valid-{curr_timestamp}'
 
@@ -73,11 +104,20 @@ class Runner:
         self.train_data_loader = None
         self.valid_data_loader = None
 
-        self.data_transforms = transforms.Compose([
+        self.train_transforms = transforms.Compose([
             transforms.Resize(self.input_size),
             transforms.RandomVerticalFlip(),
             transforms.RandomHorizontalFlip(),
             transforms.RandomRotation((-45, 45)),
+            transforms.TrivialAugmentWide(),
+            transforms.ColorJitter(brightness=0.2, hue=0.1, saturation=0.3),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225]),
+            transforms.RandomErasing(0.2)
+        ])
+        self.valid_transforms = transforms.Compose([
+            transforms.Resize(self.input_size),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])
@@ -87,14 +127,14 @@ class Runner:
         self.load_data()
         if self.mode == 'train':
             for epoch in range(self.num_epochs):
-                self.train_classification_epoch(epoch)
-                self.valid_classification_epoch(epoch)
+                self.train_epoch(epoch)
+                self.valid_epoch(epoch)
                 self.save_checkpoint(epoch)
 
         elif self.mode == 'valid':
             self.load_checkpoint(self.metadata['log_dir'] + '/' +
                                  self.metadata['timestamp'])
-            acc, loss = self.valid_classification_epoch(0)
+            acc, loss = self.valid_epoch(0)
             for i in range(self.num_epochs):
                 self.writer.add_scalar('Accuracy/valid', acc, i)
                 self.writer.add_scalar('Loss/valid', loss, i)
@@ -102,20 +142,23 @@ class Runner:
     def load_data(self) -> None:
         self.train_data_loader = load_data(
             self.train_data_dir,
-            transform=self.data_transforms,
+            transform=self.train_transforms,
             target_transform=lambda x: torch.eye(self.num_classes)[x],
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             shuffle=True)
         self.valid_data_loader = load_data(
             self.valid_data_dir,
-            transform=self.data_transforms,
+            transform=self.valid_transforms,
             target_transform=lambda x: torch.eye(self.num_classes)[x],
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             shuffle=True)
 
-    def train_classification_epoch(self, epoch):
+    def predict(self, x: torch.Tensor):
+        return self.model(x)
+
+    def train_epoch(self, epoch):
         self.writer.add_scalar(f'lr', self.scheduler.get_last_lr()[-1], epoch)
         with Progress(
                 TextColumn("[progress.description]{task.description}"),
@@ -124,7 +167,8 @@ class Runner:
                 TimeRemainingColumn(), TimeElapsedColumn()) as progress:
             task = progress.add_task(description=f"Epoch {epoch:>3} train",
                                      total=len(self.train_data_loader))
-            self.net.train()
+
+            self.model.train()
             correct = 0
             accuracy = 0
 
@@ -132,7 +176,7 @@ class Runner:
                 x = x.to(self.device)
                 y = y.to(self.device)
 
-                predict = self.net(x)
+                predict = self.predict(x)
                 loss = self.criterion(predict, y)
 
                 self.optimizer.zero_grad()
@@ -152,7 +196,7 @@ class Runner:
 
             self.scheduler.step()
 
-    def valid_classification_epoch(self, epoch):
+    def valid_epoch(self, epoch):
         with Progress(
                 TextColumn("[progress.description]{task.description}"),
                 BarColumn(),
@@ -161,14 +205,14 @@ class Runner:
             task = progress.add_task(description=f"Epoch {epoch:>3} valid",
                                      total=len(self.valid_data_loader))
 
-            self.net.eval()
+            self.model.eval()
             correct = 0
             accuracy = 0
             with torch.no_grad():
                 for i, (x, y) in enumerate(self.valid_data_loader):
                     x = x.to(self.device)
                     y = y.to(self.device)
-                    predict = self.net(x)
+                    predict = self.predict(x)
 
                     loss = self.criterion(predict, y)
 
@@ -187,9 +231,9 @@ class Runner:
     def save_checkpoint(self, epoch):
         checkpoint = {
             'epoch': epoch,
-            'model_state_dict': self.net.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'scheduler_state_dict': self.scheduler.state_dict()
+            'model_state_dict': self.model.state_dict(),
+            # 'optimizer_state_dict': self.optimizer.state_dict(),
+            # 'scheduler_state_dict': self.scheduler.state_dict()
         }
         checkpoint_path = f'{self.log_dir}/{epoch}.pt'
         torch.save(checkpoint, checkpoint_path)
@@ -204,6 +248,6 @@ class Runner:
             raise RuntimeError('cannot find saved checkpoint')
 
         checkpoint = torch.load(f'{directory}/{max_epoch}.pt')
-        self.net.load_state_dict(checkpoint['model_state_dict'])
-        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        # self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        # self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])

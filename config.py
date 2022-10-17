@@ -52,10 +52,6 @@ class Config:
                                  default=0.001,
                                  type=float,
                                  help='learning rate')
-        self.parser.add_argument('--gamma',
-                                 default=0.9,
-                                 type=float,
-                                 help='gamma for learning rate scheduler')
         self.parser.add_argument('--label-smoothing',
                                  default=0.3,
                                  type=float,
@@ -84,6 +80,10 @@ class Config:
                                  default=0.2,
                                  type=float,
                                  help='dropout rate of the model')
+        self.parser.add_argument('--backbone',
+                                 default='densenet121',
+                                 type=str,
+                                 help='backbone of the model')
 
     def configurate(self):
         args = self.parser.parse_args()
