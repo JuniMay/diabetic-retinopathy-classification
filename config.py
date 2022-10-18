@@ -24,7 +24,7 @@ class Config:
                                  type=int,
                                  help='number of epochs')
         self.parser.add_argument('--batch-size',
-                                 default=1024,
+                                 default=64,
                                  type=int,
                                  help='batch size')
         self.parser.add_argument('--dataset-dir',
@@ -81,9 +81,12 @@ class Config:
                                  type=float,
                                  help='dropout rate of the model')
         self.parser.add_argument('--backbone',
-                                 default='densenet121',
+                                 default='patch',
                                  type=str,
                                  help='backbone of the model')
+        self.parser.add_argument('--pretrained',
+                                 action='store_true',
+                                 help='using pretrained backbone')
 
     def configurate(self):
         args = self.parser.parse_args()

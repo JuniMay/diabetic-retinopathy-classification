@@ -28,31 +28,33 @@ class Runner:
         self.num_workers = self.metadata['num_workers']
         self.num_epochs = self.metadata['num_epochs']
         self.dim = self.metadata['dim']
+        self.pretrained = self.metadata['pretrained']
 
         self.backbone = PatchEmbedding(self.dim, self.metadata['patch_size'],
                                        3)
         if self.metadata['backbone'] == 'densenet121':
-            net = torchvision.models.densenet121(pretrained=True)
+            net = torchvision.models.densenet121(pretrained=self.pretrained)
             self.backbone = nn.Sequential(*(list(net.children())[:-1]))  # 1024
             self.dim = 1024
         elif self.metadata['backbone'] == 'densenet161':
-            net = torchvision.models.densenet161(pretrained=True)
+            net = torchvision.models.densenet161(pretrained=self.pretrained)
             self.backbone = nn.Sequential(*(list(net.children())[:-1]))  # 2208
             self.dim = 2208
         elif self.metadata['backbone'] == 'efficientnet':
-            net = torchvision.models.efficientnet_b4(pretrained=True)
+            net = torchvision.models.efficientnet_b4(
+                pretrained=self.pretrained)
             self.backbone = nn.Sequential(*(list(net.children())[:-2]))  # 1792
             self.dim = 1792
         elif self.metadata['backbone'] == 'resnet101':
-            net = torchvision.models.resnet101(pretrained=True)
+            net = torchvision.models.resnet101(pretrained=self.pretrained)
             self.backbone = nn.Sequential(*(list(net.children())[:-2]))  # 2048
             self.dim = 2048
         elif self.metadata['backbone'] == 'resnet152':
-            net = torchvision.models.resnet152(pretrained=True)
+            net = torchvision.models.resnet152(pretrained=self.pretrained)
             self.backbone = nn.Sequential(*(list(net.children())[:-2]))  # 2048
             self.dim = 2048
         elif self.metadata['backbone'] == 'convnext_base':
-            net = torchvision.models.convnext_base(pretrained=True)
+            net = torchvision.models.convnext_base(pretrained=self.pretrained)
             self.backbone = nn.Sequential(*(list(net.children())[:-2]))  # 1024
             self.dim = 1024
 
@@ -64,8 +66,7 @@ class Runner:
                 num_classes=self.num_classes,
                 drop=self.metadata['drop'])).to(self.device)
 
-        self.optimizer = optim.AdamW(list(self.model.parameters()) +
-                                     list(self.backbone.parameters()),
+        self.optimizer = optim.AdamW(self.model.parameters(),
                                      lr=self.metadata['lr'])
         self.criterion = nn.CrossEntropyLoss(
             label_smoothing=self.metadata['label_smoothing']).to(self.device)
@@ -159,6 +160,9 @@ class Runner:
         return self.model(x)
 
     def train_epoch(self, epoch):
+        self.writer.add_graph(
+            self.model,
+            next(iter(self.train_data_loader))[0].to(self.device))
         self.writer.add_scalar(f'lr', self.scheduler.get_last_lr()[-1], epoch)
         with Progress(
                 TextColumn("[progress.description]{task.description}"),
@@ -235,6 +239,8 @@ class Runner:
             # 'optimizer_state_dict': self.optimizer.state_dict(),
             # 'scheduler_state_dict': self.scheduler.state_dict()
         }
+        if os.path.exists(f'{self.log_dir}/{epoch - 5}.pt'):
+            os.remove(f'{self.log_dir}/{epoch - 5}.pt')
         checkpoint_path = f'{self.log_dir}/{epoch}.pt'
         torch.save(checkpoint, checkpoint_path)
 
