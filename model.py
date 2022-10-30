@@ -97,43 +97,12 @@ class ConvMixerLayer(nn.Module):
         return x
 
 
-class ClassificationHead(nn.Module):
-    def __init__(self,
-                 dim,
-                 num_hiddens = None,
-                 num_classes=5,
-                 drop=0.25,):
-        super().__init__()
-
-        if num_hiddens is None:
-            num_hiddens = dim * 2
-
-        self.linear1 = nn.Linear(dim, num_hiddens)
-        self.activation1 = nn.GELU()
-        self.dropout1 = nn.Dropout(drop)
-        self.linear2 = nn.Linear(num_hiddens, num_hiddens)
-        self.activation2 = nn.GELU()
-        self.dropout2 = nn.Dropout(drop)
-        self.linear3 = nn.Linear(num_hiddens, num_classes)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.linear1(x)
-        x = self.activation1(x)
-        x = self.dropout1(x)
-        x = self.linear2(x)
-        x = self.activation2(x)
-        x = self.dropout2(x)
-        x = self.linear3(x)
-        return x
-
-
 class Net(nn.Module):
     def __init__(self,
                  dim,
                  depth,
                  kernel_size,
-                 num_classes=5,
-                 drop=0.25):
+                 num_classes=5):
         super().__init__()
         
         self.attention = CbamBlock(in_channels=dim)
@@ -144,7 +113,7 @@ class Net(nn.Module):
         self.pool = nn.AdaptiveAvgPool2d((1, 1))
         self.flatten = nn.Flatten()
         
-        self.head = ClassificationHead(dim, None, num_classes, drop)
+        self.head = nn.Linear(dim, num_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.attention(x)

@@ -76,10 +76,6 @@ class Config:
                                  default=8,
                                  type=int,
                                  help='patch size of the model')
-        self.parser.add_argument('--drop',
-                                 default=0.2,
-                                 type=float,
-                                 help='dropout rate of the model')
         self.parser.add_argument('--backbone',
                                  default='patch',
                                  type=str,
@@ -87,6 +83,13 @@ class Config:
         self.parser.add_argument('--pretrained',
                                  action='store_true',
                                  help='using pretrained backbone')
+        self.parser.add_argument(
+            '--only-fc',
+            action='store_true',
+            help='only use fully connected layer after backbone.')
+        self.parser.add_argument('--freeze-backbone',
+                                 action='store_true',
+                                 help='freeze backbone in training')
 
     def configurate(self):
         args = self.parser.parse_args()

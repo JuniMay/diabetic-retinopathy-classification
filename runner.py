@@ -6,13 +6,14 @@ import torch.nn as nn
 import torch.optim as optim
 from config import Config
 from model import Net, PatchEmbedding
-from utils import load_data
+from utils import load_data, set_seed
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 from rich.progress import Progress
 from rich.progress import TextColumn, BarColumn
 from rich.progress import TimeElapsedColumn, TimeRemainingColumn
+from torchmetrics.classification import CohenKappa
 
 
 class Runner:
@@ -30,48 +31,99 @@ class Runner:
         self.dim = self.metadata['dim']
         self.pretrained = self.metadata['pretrained']
 
-        self.backbone = PatchEmbedding(self.dim, self.metadata['patch_size'],
-                                       3)
-        if self.metadata['backbone'] == 'densenet121':
-            net = torchvision.models.densenet121(pretrained=self.pretrained)
-            self.backbone = nn.Sequential(*(list(net.children())[:-1]))  # 1024
-            self.dim = 1024
-        elif self.metadata['backbone'] == 'densenet161':
-            net = torchvision.models.densenet161(pretrained=self.pretrained)
-            self.backbone = nn.Sequential(*(list(net.children())[:-1]))  # 2208
-            self.dim = 2208
-        elif self.metadata['backbone'] == 'efficientnet':
-            net = torchvision.models.efficientnet_b4(
-                pretrained=self.pretrained)
-            self.backbone = nn.Sequential(*(list(net.children())[:-2]))  # 1792
-            self.dim = 1792
-        elif self.metadata['backbone'] == 'resnet101':
-            net = torchvision.models.resnet101(pretrained=self.pretrained)
-            self.backbone = nn.Sequential(*(list(net.children())[:-2]))  # 2048
-            self.dim = 2048
-        elif self.metadata['backbone'] == 'resnet152':
-            net = torchvision.models.resnet152(pretrained=self.pretrained)
-            self.backbone = nn.Sequential(*(list(net.children())[:-2]))  # 2048
-            self.dim = 2048
-        elif self.metadata['backbone'] == 'convnext_base':
-            net = torchvision.models.convnext_base(pretrained=self.pretrained)
-            self.backbone = nn.Sequential(*(list(net.children())[:-2]))  # 1024
-            self.dim = 1024
+        self.best_acc = 0
 
-        self.model = nn.Sequential(
-            self.backbone,
-            Net(dim=self.dim,
-                depth=self.metadata['depth'],
-                kernel_size=self.metadata['kernel_size'],
-                num_classes=self.num_classes,
-                drop=self.metadata['drop'])).to(self.device)
+        set_seed()
 
-        self.optimizer = optim.AdamW(self.model.parameters(),
+        if self.metadata['only_fc']:
+            if self.metadata['backbone'] == 'densenet121':
+                net = torchvision.models.densenet121(
+                    pretrained=self.pretrained)
+                net.classifier = nn.Linear(1024, self.num_classes)
+                self.model = net.to(self.device)
+
+            elif self.metadata['backbone'] == 'efficientnet':
+                net = torchvision.models.efficientnet_b4(
+                    pretrained=self.pretrained)
+                net.classifier[1] = nn.Linear(1792, self.num_classes)
+                self.model = net.to(self.device)
+
+            elif self.metadata['backbone'] == 'resnet101':
+                net = torchvision.models.resnet101(pretrained=self.pretrained)
+                net.fc = nn.Linear(2048, self.num_classes)
+                self.model = net.to(self.device)
+
+            elif self.metadata['backbone'] == 'resnet152':
+                net = torchvision.models.resnet152(pretrained=self.pretrained)
+                net.fc = nn.Linear(2048, self.num_classes)
+                self.model = net.to(self.device)
+
+            elif self.metadata['backbone'] == 'convnext_base':
+                net = torchvision.models.convnext_base(
+                    pretrained=self.pretrained)
+                net.classifier[2] = nn.Linear(1024, self.num_classes)
+                self.model = net.to(self.device)
+
+            else:
+                raise RuntimeError("Backbone is not supported for fc-only net")
+        else:
+            if self.metadata['backbone'] == 'densenet121':
+                net = torchvision.models.densenet121(
+                    pretrained=self.pretrained)
+                self.backbone = nn.Sequential(*(list(
+                    net.children())[:-1]))  # 1024
+                self.dim = 1024
+            elif self.metadata['backbone'] == 'densenet161':
+                net = torchvision.models.densenet161(
+                    pretrained=self.pretrained)
+                self.backbone = nn.Sequential(*(list(
+                    net.children())[:-1]))  # 2208
+                self.dim = 2208
+            elif self.metadata['backbone'] == 'efficientnet':
+                net = torchvision.models.efficientnet_b4(
+                    pretrained=self.pretrained)
+                self.backbone = nn.Sequential(*(list(
+                    net.children())[:-2]))  # 1792
+                self.dim = 1792
+            elif self.metadata['backbone'] == 'resnet101':
+                net = torchvision.models.resnet101(pretrained=self.pretrained)
+                self.backbone = nn.Sequential(*(list(
+                    net.children())[:-2]))  # 2048
+                self.dim = 2048
+            elif self.metadata['backbone'] == 'resnet152':
+                net = torchvision.models.resnet152(pretrained=self.pretrained)
+                self.backbone = nn.Sequential(*(list(
+                    net.children())[:-2]))  # 2048
+                self.dim = 2048
+            elif self.metadata['backbone'] == 'convnext_base':
+                net = torchvision.models.convnext_base(
+                    pretrained=self.pretrained)
+                self.backbone = nn.Sequential(*(list(
+                    net.children())[:-2]))  # 1024
+                self.dim = 1024
+            elif self.metadata['backbone'] == 'patch':
+                self.backbone = PatchEmbedding(self.dim,
+                                               self.metadata['patch_size'], 3)
+            else:
+                raise RuntimeError("Backbone is not supported")
+
+            if self.metadata['freeze_backbone']:
+                self.backbone.requires_grad_(False)
+
+            self.model = nn.Sequential(
+                self.backbone,
+                Net(dim=self.dim,
+                    depth=self.metadata['depth'],
+                    kernel_size=self.metadata['kernel_size'],
+                    num_classes=self.num_classes)).to(self.device)
+
+        self.optimizer = optim.AdamW(filter(lambda p: p.requires_grad,
+                                            self.model.parameters()),
                                      lr=self.metadata['lr'])
         self.criterion = nn.CrossEntropyLoss(
             label_smoothing=self.metadata['label_smoothing']).to(self.device)
-        self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer, T_max=self.num_epochs // 4, eta_min=1e-10)
+        self.scheduler = optim.lr_scheduler.ExponentialLR(self.optimizer,
+                                                          gamma=0.95)
 
         if self.metadata['timestamp'] is None:
             self.timestamp = '{0:%Y-%m-%dT%H-%M-%S}'.format(datetime.now())
@@ -124,9 +176,13 @@ class Runner:
                                  std=[0.229, 0.224, 0.225])
         ])
 
+    def predict(self, x) -> torch.Tensor:
+        return self.model(x)
+
     def run(self) -> None:
         self.load_data()
         if self.mode == 'train':
+            self.best_acc = 0
             for epoch in range(self.num_epochs):
                 self.train_epoch(epoch)
                 self.valid_epoch(epoch)
@@ -135,12 +191,16 @@ class Runner:
         elif self.mode == 'valid':
             self.load_checkpoint(self.metadata['log_dir'] + '/' +
                                  self.metadata['timestamp'])
-            acc, loss = self.valid_epoch(0)
+            acc, loss, kappa = self.valid_epoch(0)
             for i in range(self.num_epochs):
                 self.writer.add_scalar('Accuracy/valid', acc, i)
                 self.writer.add_scalar('Loss/valid', loss, i)
+                self.writer.add_scalar('Kappa/valid', kappa, i)
 
     def load_data(self) -> None:
+        print(f'using {self.train_data_dir} as dataset for training.')
+        print(
+            f'using {self.valid_data_dir} as dataset for validating(testing).')
         self.train_data_loader = load_data(
             self.train_data_dir,
             transform=self.train_transforms,
@@ -155,9 +215,6 @@ class Runner:
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             shuffle=True)
-
-    def predict(self, x: torch.Tensor):
-        return self.model(x)
 
     def train_epoch(self, epoch):
         self.writer.add_graph(
@@ -175,6 +232,9 @@ class Runner:
             self.model.train()
             correct = 0
             accuracy = 0
+            target = torch.empty(0, dtype=torch.int)
+            preds = torch.empty(0, dtype=torch.int)
+            kappa_calc = CohenKappa(num_classes=self.num_classes)
 
             for i, (x, y) in enumerate(self.train_data_loader):
                 x = x.to(self.device)
@@ -187,16 +247,29 @@ class Runner:
                 loss.backward()
                 self.optimizer.step()
 
-                correct += (predict.argmax(dim=1) == y.argmax(
+                local_correct = (predict.argmax(dim=1) == y.argmax(
                     dim=1)).float().sum()
-                accuracy = correct / (i + 1) / self.batch_size
+                accuracy = local_correct / self.batch_size
+                correct += local_correct
+                target = torch.concat([target, y.argmax(dim=1).cpu()])
+                preds = torch.concat([preds, predict.argmax(dim=1).cpu()])
+                kappa = kappa_calc(
+                    predict.argmax(dim=1).cpu(),
+                    y.argmax(dim=1).cpu())
 
                 self.writer.add_scalar(f'Accuracy/train', accuracy,
                                        epoch * len(self.train_data_loader) + i)
                 self.writer.add_scalar(f'Loss/train', loss.item(),
                                        epoch * len(self.train_data_loader) + i)
+                self.writer.add_scalar(f'Kappa/train', kappa,
+                                       epoch * len(self.train_data_loader) + i)
 
                 progress.advance(task)
+
+            accuracy = correct / len(self.train_data_loader) / self.batch_size
+            kappa = kappa_calc(preds, target)
+            self.writer.add_scalar(f'Accuracy/global', accuracy, epoch)
+            self.writer.add_scalar(f'Kappa/global', kappa, epoch)
 
             self.scheduler.step()
 
@@ -212,6 +285,8 @@ class Runner:
             self.model.eval()
             correct = 0
             accuracy = 0
+            target = torch.empty(0, dtype=torch.int)
+            preds = torch.empty(0, dtype=torch.int)
             with torch.no_grad():
                 for i, (x, y) in enumerate(self.valid_data_loader):
                     x = x.to(self.device)
@@ -222,22 +297,32 @@ class Runner:
 
                     correct += (predict.argmax(dim=1) == y.argmax(
                         dim=1)).float().sum()
+                    target = torch.concat([target, y.argmax(dim=1).cpu()])
+                    preds = torch.concat([preds, predict.argmax(dim=1).cpu()])
                     accuracy = correct / (i + 1) / self.batch_size
 
                     progress.advance(task)
 
+                kappa = CohenKappa(num_classes=self.num_classes)(preds, target)
+
                 if self.mode == 'train':
                     self.writer.add_scalar(f'Accuracy/valid', accuracy, epoch)
                     self.writer.add_scalar(f'Loss/valid', loss.item(), epoch)
+                    self.writer.add_scalar(f'Kappa/valid', kappa, epoch)
 
-        return accuracy, loss.item()
+                if accuracy > self.best_acc:
+                    torch.save(self.model.state_dict(),
+                               f'{self.log_dir}/best_acc.pt')
+                    self.best_acc = accuracy
+
+        return accuracy, loss.item(), kappa
 
     def save_checkpoint(self, epoch):
         checkpoint = {
             'epoch': epoch,
             'model_state_dict': self.model.state_dict(),
-            # 'optimizer_state_dict': self.optimizer.state_dict(),
-            # 'scheduler_state_dict': self.scheduler.state_dict()
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'scheduler_state_dict': self.scheduler.state_dict()
         }
         if os.path.exists(f'{self.log_dir}/{epoch - 5}.pt'):
             os.remove(f'{self.log_dir}/{epoch - 5}.pt')
@@ -255,5 +340,5 @@ class Runner:
 
         checkpoint = torch.load(f'{directory}/{max_epoch}.pt')
         self.model.load_state_dict(checkpoint['model_state_dict'])
-        # self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        # self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
