@@ -63,7 +63,8 @@ class Config:
         self.parser.add_argument('--dim',
                                  default=128,
                                  type=int,
-                                 help='dimension of the model')
+                                 help='dimension of the model'
+                                 ' (works only when using patch as backbone)')
         self.parser.add_argument('--depth',
                                  default=8,
                                  type=int,
@@ -75,7 +76,8 @@ class Config:
         self.parser.add_argument('--patch-size',
                                  default=8,
                                  type=int,
-                                 help='patch size of the model')
+                                 help='patch size of the model'
+                                 ' (works only when using patch as backbone)')
         self.parser.add_argument('--backbone',
                                  default='patch',
                                  type=str,
@@ -89,7 +91,14 @@ class Config:
             help='only use fully connected layer after backbone.')
         self.parser.add_argument('--freeze-backbone',
                                  action='store_true',
-                                 help='freeze backbone in training')
+                                 help='freeze backbone in training '
+                                 '(works only when --only-fc is disabled)')
+        self.parser.add_argument(
+            '--backbone-lr',
+            default=None,
+            type=float,
+            help='separate learning rate for backbone'
+            ' (works only when --freeze-backbone and --only-fc are disabled)')
 
     def configurate(self):
         args = self.parser.parse_args()

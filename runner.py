@@ -117,9 +117,20 @@ class Runner:
                     kernel_size=self.metadata['kernel_size'],
                     num_classes=self.num_classes)).to(self.device)
 
-        self.optimizer = optim.AdamW(filter(lambda p: p.requires_grad,
-                                            self.model.parameters()),
-                                     lr=self.metadata['lr'])
+        if self.metadata['backbone_lr'] is not None and not self.metadata[
+                'freeze_backbone'] and not self.metadata['only_fc']:
+            self.optimizer = optim.AdamW([{
+                'params': self.model[0].parameters(),
+                'lr': self.metadata['backbone_lr']
+            }, {
+                'params': self.model[1].parameters()
+            }],
+                                         lr=self.metadata['lr'])
+        else:
+            self.optimizer = optim.AdamW(filter(lambda p: p.requires_grad,
+                                                self.model.parameters()),
+                                         lr=self.metadata['lr'])
+
         self.criterion = nn.CrossEntropyLoss(
             label_smoothing=self.metadata['label_smoothing']).to(self.device)
         self.scheduler = optim.lr_scheduler.ExponentialLR(self.optimizer,
@@ -221,6 +232,11 @@ class Runner:
             self.model,
             next(iter(self.train_data_loader))[0].to(self.device))
         self.writer.add_scalar(f'lr', self.scheduler.get_last_lr()[-1], epoch)
+
+        if len(self.scheduler.get_last_lr()) > 1:
+            self.writer.add_scalar(f'lr/backbone_lr',
+                                   self.scheduler.get_last_lr()[-2], epoch)
+
         with Progress(
                 TextColumn("[progress.description]{task.description}"),
                 BarColumn(),
