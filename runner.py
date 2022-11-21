@@ -4,6 +4,8 @@ import torch
 import torchvision
 import torch.nn as nn
 import torch.optim as optim
+import seaborn as sns
+import matplotlib.pyplot as plt
 from config import Config
 from model import Net, PatchEmbedding
 from utils import load_data, set_seed
@@ -14,6 +16,7 @@ from rich.progress import Progress
 from rich.progress import TextColumn, BarColumn
 from rich.progress import TimeElapsedColumn, TimeRemainingColumn
 from torchmetrics.classification import CohenKappa
+from torchmetrics.classification import ConfusionMatrix
 
 
 class Runner:
@@ -321,15 +324,21 @@ class Runner:
 
                 kappa = CohenKappa(num_classes=self.num_classes)(preds, target)
 
+                confmat = ConfusionMatrix(num_classes=self.num_classes)(preds, target)
+
+                plt.figure(figsize=(9, 9))
+                sns.heatmap(confmat, )
+                plt.savefig(f'{self.log_dir}/confusion_matrix.pdf')
+
                 if self.mode == 'train':
                     self.writer.add_scalar(f'Accuracy/valid', accuracy, epoch)
                     self.writer.add_scalar(f'Loss/valid', loss.item(), epoch)
                     self.writer.add_scalar(f'Kappa/valid', kappa, epoch)
 
-                if accuracy > self.best_acc:
-                    torch.save(self.model.state_dict(),
-                               f'{self.log_dir}/best_acc.pt')
-                    self.best_acc = accuracy
+                    if accuracy > self.best_acc:
+                        torch.save(self.model.state_dict(),
+                                f'{self.log_dir}/best_acc.pt')
+                        self.best_acc = accuracy
 
         return accuracy, loss.item(), kappa
 
@@ -349,6 +358,8 @@ class Runner:
         max_epoch = -1
         for file in os.listdir(directory):
             if file.endswith('.pt'):
+                if not file.rsplit('.', 1)[0].isnumeric():
+                    continue
                 max_epoch = max(max_epoch, int(file.rsplit('.', 1)[0]))
 
         if max_epoch == -1:
