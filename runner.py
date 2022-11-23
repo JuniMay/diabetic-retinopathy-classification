@@ -268,7 +268,7 @@ class Runner:
 
                 local_correct = (predict.argmax(dim=1) == y.argmax(
                     dim=1)).float().sum()
-                accuracy = local_correct / self.batch_size
+                accuracy = local_correct / len(x)
                 correct += local_correct
                 target = torch.concat([target, y.argmax(dim=1).cpu()])
                 preds = torch.concat([preds, predict.argmax(dim=1).cpu()])
@@ -285,7 +285,7 @@ class Runner:
 
                 progress.advance(task)
 
-            accuracy = correct / len(self.train_data_loader) / self.batch_size
+            accuracy = correct / len(self.train_data_loader.dataset)
             kappa = kappa_calc(preds, target)
             self.writer.add_scalar(f'Accuracy/global', accuracy, epoch)
             self.writer.add_scalar(f'Kappa/global', kappa, epoch)
@@ -318,17 +318,19 @@ class Runner:
                         dim=1)).float().sum()
                     target = torch.concat([target, y.argmax(dim=1).cpu()])
                     preds = torch.concat([preds, predict.argmax(dim=1).cpu()])
-                    accuracy = correct / (i + 1) / self.batch_size
 
                     progress.advance(task)
+
+                accuracy = correct / len(self.valid_data_loader.dataset)
 
                 kappa = CohenKappa(num_classes=self.num_classes)(preds, target)
 
                 confmat = ConfusionMatrix(num_classes=self.num_classes)(preds, target)
 
-                plt.figure(figsize=(9, 9))
+                fig = plt.figure(figsize=(9, 9))
                 sns.heatmap(confmat, )
                 plt.savefig(f'{self.log_dir}/confusion_matrix.pdf')
+                plt.close(fig)
 
                 if self.mode == 'train':
                     self.writer.add_scalar(f'Accuracy/valid', accuracy, epoch)
@@ -365,7 +367,13 @@ class Runner:
         if max_epoch == -1:
             raise RuntimeError('cannot find saved checkpoint')
 
-        checkpoint = torch.load(f'{directory}/{max_epoch}.pt')
-        self.model.load_state_dict(checkpoint['model_state_dict'])
-        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        if os.path.exists(f'{directory}/best_acc.pt'):
+            max_epoch = 'best_acc'
+
+            checkpoint = torch.load(f'{directory}/{max_epoch}.pt')
+            self.model.load_state_dict(checkpoint)
+        else:
+            checkpoint = torch.load(f'{directory}/{max_epoch}.pt')
+            self.model.load_state_dict(checkpoint['model_state_dict'])
+            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
