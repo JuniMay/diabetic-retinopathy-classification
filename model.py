@@ -40,6 +40,7 @@ class SpatialAttention(nn.Module):
         out = self.sigmoid(self.conv2d(out))
         return out
 
+
 class CbamBlock(nn.Module):
     def __init__(self, in_channels):
         super().__init__()
@@ -50,6 +51,7 @@ class CbamBlock(nn.Module):
         out = self.channel_attention(x) * x
         out = self.spatial_attention(out) * out
         return out
+
 
 class PatchEmbedding(nn.Module):
     def __init__(self, dim, patch_size, in_channels=3):
@@ -98,13 +100,9 @@ class ConvMixerLayer(nn.Module):
 
 
 class Net(nn.Module):
-    def __init__(self,
-                 dim,
-                 depth,
-                 kernel_size,
-                 num_classes=5):
+    def __init__(self, dim, depth, kernel_size, num_classes=5):
         super().__init__()
-        
+
         self.attention = CbamBlock(in_channels=dim)
         self.layers = nn.ModuleList()
         for _ in range(depth):
@@ -112,7 +110,7 @@ class Net(nn.Module):
 
         self.pool = nn.AdaptiveAvgPool2d((1, 1))
         self.flatten = nn.Flatten()
-        
+
         self.head = nn.Linear(dim, num_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -120,6 +118,73 @@ class Net(nn.Module):
         for layer in self.layers:
             x = layer(x)
 
+        x = self.pool(x)
+        x = self.flatten(x)
+        x = self.head(x)
+
+        return x
+
+
+class GlobalAttentionBlock(nn.Module):
+    def __init__(self, in_channels):
+        super().__init__()
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.conv = nn.Conv2d(in_channels, in_channels, 1, padding='same')
+        self.activation1 = nn.Sigmoid()
+        self.activation2 = nn.Sigmoid()
+
+    def forward(self, x):
+        out = self.pool(x)
+        out = self.conv(out)
+        out = self.activation1(out)
+        out = out * x
+        spatial = torch.mean(out, dim=1, keepdim=True)
+        spatial = self.activation2(spatial)
+        out = spatial * out
+        return out
+
+
+class CategoryAttentionBlock(nn.Module):
+    def __init__(self, in_channels, k, num_classes=5) -> None:
+        super().__init__()
+        self.k = k
+        self.num_classes = num_classes
+        self.conv1 = nn.Conv2d(in_channels, k * num_classes, 1, padding='same')
+        self.drop = nn.Dropout(0.5)
+        self.pool1 = nn.AdaptiveMaxPool2d((1, 1))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out1 = self.conv1(x)
+
+        out2 = self.drop(out1)
+        out2 = self.pool1(out1)
+        out2 = torch.reshape(out2, (-1, self.num_classes, self.k))
+        out2 = torch.mean(out2, dim=-1,
+                          keepdim=False).unsqueeze(2).unsqueeze(3)
+
+        out1 = torch.reshape(
+            out1, (-1, self.num_classes, self.k, out1.shape[2], out1.shape[3]))
+        out1 = torch.mean(out1, dim=2, keepdim=False)
+        out = out1 * out2
+        out = torch.mean(out, dim=1, keepdim=True)
+
+        out = x * out
+
+        return out
+
+
+class CabNet(nn.Module):
+    def __init__(self, dim, k, num_classes) -> None:
+        super().__init__()
+        self.attention1 = GlobalAttentionBlock(dim)
+        self.attention2 = CategoryAttentionBlock(dim, k, num_classes)
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.flatten = nn.Flatten()
+        self.head = nn.Linear(dim, num_classes)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.attention1(x)
+        x = self.attention2(x)
         x = self.pool(x)
         x = self.flatten(x)
         x = self.head(x)

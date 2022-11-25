@@ -7,7 +7,7 @@ import torch.optim as optim
 import seaborn as sns
 import matplotlib.pyplot as plt
 from config import Config
-from model import Net, PatchEmbedding
+from model import Net, PatchEmbedding, CabNet
 from utils import load_data, set_seed
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
@@ -119,6 +119,13 @@ class Runner:
                     depth=self.metadata['depth'],
                     kernel_size=self.metadata['kernel_size'],
                     num_classes=self.num_classes)).to(self.device)
+
+            if self.metadata['cabnet'] == True:
+                self.model = nn.Sequential(
+                    self.backbone,
+                    CabNet(dim=self.dim,
+                           k=self.metadata['cabnet_k'],
+                           num_classes=self.num_classes)).to(self.device)
 
         if self.metadata['backbone_lr'] is not None and not self.metadata[
                 'freeze_backbone'] and not self.metadata['only_fc']:
@@ -325,10 +332,11 @@ class Runner:
 
                 kappa = CohenKappa(num_classes=self.num_classes)(preds, target)
 
-                confmat = ConfusionMatrix(num_classes=self.num_classes)(preds, target)
+                confmat = ConfusionMatrix(num_classes=self.num_classes)(preds,
+                                                                        target)
 
                 fig = plt.figure(figsize=(9, 9))
-                sns.heatmap(confmat, )
+                sns.heatmap(confmat, annot=True, fmt='d', cmap='Blues')
                 plt.savefig(f'{self.log_dir}/confusion_matrix.pdf')
                 plt.close(fig)
 
@@ -339,7 +347,7 @@ class Runner:
 
                     if accuracy > self.best_acc:
                         torch.save(self.model.state_dict(),
-                                f'{self.log_dir}/best_acc.pt')
+                                   f'{self.log_dir}/best_acc.pt')
                         self.best_acc = accuracy
 
         return accuracy, loss.item(), kappa

@@ -99,6 +99,13 @@ class Config:
             type=float,
             help='separate learning rate for backbone'
             ' (works only when --freeze-backbone and --only-fc are disabled)')
+        self.parser.add_argument('--cabnet',
+                                 action='store_true',
+                                 help='use CabNet')
+        self.parser.add_argument('--cabnet-k',
+                                 default=5,
+                                 type=int,
+                                 help='k of CabNet')
 
     def configurate(self):
         args = self.parser.parse_args()
