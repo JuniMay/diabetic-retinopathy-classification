@@ -11,12 +11,12 @@
     box/.style={rectangle,draw,fill=DarkGray!20,node distance=1cm,text width=15em,text centered,rounded corners,minimum height=2em,thick},
     arrow/.style={draw,-latex',thick},
   ]
-  \node [box] (depthwise_conv) {Depth-Wise Convolution};
+  \node [box] (depthwise_conv) {Depthwise Convolution};
   \node [box,fill=red!20,below=0.5 of depthwise_conv] (activation1) {GELU};
   \node [box,fill=teal!30,below=0.5 of activation1] (norm1) {Batch Normalization};
   \node [circle,draw,below=0.5 of norm1] (residual) {+};
   \node [left=0 of residual] (residual text) {\small residual connection};
-  \node [box,below=0.5 of residual] (pointwise_conv) {Point-Wise Convolution};
+  \node [box,below=0.5 of residual] (pointwise_conv) {Pointwise Convolution};
   \node [box,fill=red!20,below=0.5 of pointwise_conv] (activation2) {GELU};
   \node [box,fill=teal!30,below=0.5 of activation2] (norm2) {Batch Normalization};
 
