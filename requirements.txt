@@ -1,0 +1,7 @@
+matplotlib
+numpy
+rich
+seaborn
+torch==1.11.0
+torchmetrics==0.9.3
+torchvision==0.12.0
