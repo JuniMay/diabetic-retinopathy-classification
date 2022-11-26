@@ -17,6 +17,7 @@ from rich.progress import TextColumn, BarColumn
 from rich.progress import TimeElapsedColumn, TimeRemainingColumn
 from torchmetrics.classification import CohenKappa
 from torchmetrics.classification import ConfusionMatrix
+from PIL import Image
 
 
 class Runner:
@@ -337,7 +338,8 @@ class Runner:
 
                 fig = plt.figure(figsize=(9, 9))
                 sns.heatmap(confmat, annot=True, fmt='d', cmap='Blues')
-                plt.savefig(f'{self.log_dir}/confusion_matrix.pdf')
+                plt.savefig(f'{self.log_dir}/confusion_matrix.pdf',
+                            bbox_inches='tight')
                 plt.close(fig)
 
                 if self.mode == 'train':
@@ -385,3 +387,78 @@ class Runner:
             self.model.load_state_dict(checkpoint['model_state_dict'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+
+    def visualize_cabnet(self, img_path: str):
+        self.model.eval()
+
+        self.load_checkpoint(self.metadata['log_dir'] + '/' +
+                             self.metadata['timestamp'])
+
+        img = Image.open(img_path)
+
+        x = self.valid_transforms(img).unsqueeze(0).to(self.device)
+
+        y = self.model[0](x)
+        y = self.model[1].attention1(y)
+
+        out1 = self.model[1].attention2.conv1(y)
+
+        out2 = self.model[1].attention2.drop(out1)
+        out2 = self.model[1].attention2.pool1(out1)
+        out2 = torch.reshape(out2, (-1, self.model[1].attention2.num_classes,
+                                    self.model[1].attention2.k))
+        out2 = torch.mean(out2, dim=-1,
+                          keepdim=False).unsqueeze(2).unsqueeze(3)
+
+        out1 = torch.reshape(
+            out1, (-1, self.model[1].attention2.num_classes,
+                   self.model[1].attention2.k, out1.shape[2], out1.shape[3]))
+        out1 = torch.mean(out1, dim=2, keepdim=False)
+        out = out1 * out2
+        out = torch.mean(out, dim=1, keepdim=True)
+
+        out.unsqueeze(0).unsqueeze(0)
+
+        heatmap = transforms.Resize((512, 512))(out)
+        heatmap = heatmap.squeeze(0).squeeze(0).detach().cpu().numpy()
+
+        plt.axis('off')
+        plt.imshow(img)
+
+        plt.savefig(f'{self.log_dir}/image.png', bbox_inches='tight'),
+
+        plt.axis('off')
+        plt.imshow(img)
+        plt.imshow(heatmap, alpha=0.3, cmap='jet')
+
+        plt.savefig(f'{self.log_dir}/heatmap.png', bbox_inches='tight')
+
+    def visualize_cbam(self, img_path: str):
+        self.model.eval()
+
+        self.load_checkpoint(self.metadata['log_dir'] + '/' +
+                             self.metadata['timestamp'])
+
+        img = Image.open(img_path)
+
+        x = self.valid_transforms(img).unsqueeze(0).to(self.device)
+
+        y = self.model[0](x)
+        out = self.model[1].attention.channel_attention(y) * y
+        out = self.model[1].attention.spatial_attention(out)
+
+        out.unsqueeze(0).unsqueeze(0)
+
+        heatmap = transforms.Resize((512, 512))(out)
+        heatmap = heatmap.squeeze(0).squeeze(0).detach().cpu().numpy()
+
+        plt.axis('off')
+        plt.imshow(img)
+
+        plt.savefig(f'{self.log_dir}/image.png', bbox_inches='tight'),
+
+        plt.axis('off')
+        plt.imshow(img)
+        plt.imshow(heatmap, alpha=0.3, cmap='jet')
+
+        plt.savefig(f'{self.log_dir}/heatmap.png', bbox_inches='tight')

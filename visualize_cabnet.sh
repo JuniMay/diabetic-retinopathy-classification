@@ -1,0 +1,1 @@
+python visualize_cabnet.py --num-classes 5 --num-workers 12 --num-epochs 80 --batch-size 32  --valid-data-dir 'data/DDR/test' --log-dir 'log/tf-logs' --lr 1e-3 --cabnet --backbone-lr 2e-5 --input-size 480 --backbone convnext_base --timestamp 'cabnet-convnext-unfreezed' --valid

@@ -1,0 +1,1 @@
+python visualize_cbam.py --num-classes 5 --num-workers 12 --num-epochs 80 --batch-size 32  --valid-data-dir 'data/DDR/valid' --log-dir 'log/tf-logs' --lr 1e-3 --depth 4 --input-size 480 --kernel-size 1 --backbone-lr 2e-5 --backbone convnext_base --timestamp 'convnext-model-pretrained-unfreezed' --valid
