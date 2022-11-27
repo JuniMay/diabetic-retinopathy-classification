@@ -111,6 +111,19 @@
 
     \end{frame}
 
+    \begin{frame}{数据集的增强}
+
+    在前期的尝试中发现对数据增强能够显著提高模型的性能，实验中使用 PyTorch 内置工具对图片进行了变换：
+    \begin{enumerate}
+        \item 随机翻转（纵向、横向）
+        \item 随机旋转一定角度
+        \item TrivialAugment（随机选择增强操作和增强幅度）
+        \item 随机改变图像的色调
+        \item 随机抹除部分像素的内容
+    \end{enumerate}
+        
+    \end{frame}
+
 \section{模型架构}
     \begin{frame}{基本架构}
     \begin{columns}
@@ -362,3 +375,6 @@
 
 
 \end{document}
+
+
+
